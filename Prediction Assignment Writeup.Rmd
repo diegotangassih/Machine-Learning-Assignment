@@ -1,0 +1,119 @@
+---
+title: "Prediction Assigment Write Up"
+author: "Diego Tangassi"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. 
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. 
+They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+
+
+#Data Loading and Exploratory Analysis
+
+The training data for this project are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:  https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+
+
+
+##Data 
+
+We need te following R-packages to complete the analysis, as well as the downloaded data (with NA's removed).
+
+```{r load}
+library(knitr); library(randomForest); library(corrplot)
+library(rpart.plot); library(rattle);library(caret); library(rpart)
+
+Train <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+Test  <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+set.seed(10)
+
+training <- read.csv(url(Train)); testing  <- read.csv(url(Test))
+inTrain  <- createDataPartition(training$classe, p = 0.7, list = FALSE)
+TrainSet <- training[inTrain, ]; TestSet  <- training[-inTrain, ]
+
+nas <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -nas]; TestSet  <- TestSet[, -nas]
+
+AllNA    <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.95
+TrainSet <- TrainSet[, AllNA == FALSE]; TestSet  <- TestSet[, AllNA == FALSE]
+
+TrainSet <- TrainSet[, -(1:5)]; TestSet  <- TestSet[, -(1:5)]
+```
+
+
+
+
+
+#Prediction Models
+
+
+We are using three methods (Decision Tree, Generalized Boosted Model and Random Forests) to know which one fit better the data(higher accuracy), and use it for the prediction.
+
+
+Decision Trees
+```{r decision trees}
+set.seed(10)
+TreeModel <- rpart(classe ~ ., data = TrainSet, method = "class")
+fancyRpartPlot(TreeModel)
+DecisionTree <- predict(TreeModel, newdata = TestSet, type = "class")
+DecisionTreeCMatrix <- confusionMatrix(DecisionTree, TestSet$classe)
+DecisionTreeCMatrix
+```
+
+
+Generalized Boosted Model
+```{r gbm}
+set.seed(10)
+TrainGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+GBMModel  <- train(classe ~ ., data = TrainSet, method = "gbm",
+                    trControl = TrainGBM, verbose = FALSE)
+GBMModel$finalModel
+GBM <- predict(GBMModel, newdata = TestSet)
+GBMCMatrix <- confusionMatrix(GBM, TestSet$classe)
+GBMCMatrix
+```
+
+
+Random Forest
+```{r random forest}
+set.seed(10)
+TrainRF <- trainControl(method = "cv", number = 3, verboseIter = FALSE)
+RFModel <- train(classe ~ ., data = TrainSet, method = "rf",
+                          trControl = TrainRF)
+RFModel$finalModel
+RF <- predict(RFModel, newdata = TestSet)
+RFCMatrix <- confusionMatrix(RF, TestSet$classe)
+RFCMatrix
+```
+
+
+
+
+Applying the Selected Model to the Test Data
+The accuracy of the 3 regression modeling methods above are:
+
+
+```{r outputs, echo=FALSE}
+paste('Random Forest : ',RFCMatrix$overall[1])
+paste('Decision Tree : ',DecisionTreeCMatrix$overall[1])
+paste('GBM : ',GBMCMatrix$overall[1])
+```
+
+The Random Forest model has the highest Accuracy, so we  will be appling such model to predict the testing dataset as shown.
+```{r predict}
+predictTEST <- predict(RFModel, newdata = testing)
+predictTEST
+```
